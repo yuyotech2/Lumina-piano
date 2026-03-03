@@ -23,15 +23,15 @@ class LuminaPiano {
     async initAudio() {
         const startBtn = document.getElementById('start-btn');
         const startText = startBtn.innerText;
-        startBtn.innerText = "Loading Studio...";
+        startBtn.innerText = "Tuning Instruments...";
         startBtn.disabled = true;
 
         await Tone.start();
 
         this.reverb = new Tone.Reverb({
-            decay: 3,
+            decay: 2.5,
             preDelay: 0.1,
-            wet: 0.3
+            wet: 0.2
         }).toDestination();
 
         // Load multi-instrument samplers
@@ -43,18 +43,18 @@ class LuminaPiano {
             }).connect(this.reverb),
 
             epiano: new Tone.Sampler({
-                urls: { "A1": "A1.mp3", "A2": "A2.mp3", "A3": "A3.mp3", "A4": "A4.mp3", "A5": "A5.mp3", "C1": "C1.mp3", "C2": "C2.mp3", "C3": "C3.mp3", "C4": "C4.mp3", "C5": "C5.mp3", "D#1": "Ds1.mp3", "D#2": "Ds2.mp3", "D#3": "Ds3.mp3", "D#4": "Ds4.mp3", "D#5": "Ds5.mp3", "F#1": "Fs1.mp3", "F#2": "Fs2.mp3", "F#3": "Fs3.mp3", "F#4": "Fs4.mp3", "F#5": "Fs5.mp3" },
+                urls: { "A1": "A1.mp3", "A2": "A2.mp3", "A3": "A3.mp3", "C1": "C1.mp3", "C2": "C2.mp3", "C3": "C3.mp3", "D#1": "Ds1.mp3", "D#2": "Ds2.mp3", "D#3": "Ds3.mp3", "F#1": "Fs1.mp3", "F#2": "Fs2.mp3", "F#3": "Fs3.mp3" },
                 baseUrl: "https://tonejs.github.io/audio/casio/",
                 release: 1
             }).connect(this.reverb),
 
-            synth: new Tone.PolySynth(Tone.MonoSynth, {
-                oscillator: { type: "sawtooth" },
-                envelope: { attack: 0.1, release: 2 }
+            synth: new Tone.PolySynth(Tone.Synth, {
+                oscillator: { type: "fatsawtooth", count: 3, spread: 30 },
+                envelope: { attack: 0.05, decay: 0.1, sustain: 0.3, release: 1 }
             }).connect(this.reverb),
 
             organ: new Tone.Sampler({
-                urls: { "C4": "C4.mp3" }, // Basic fallback, would need more samples for high quality
+                urls: { "C4": "C4.mp3" },
                 baseUrl: "https://tonejs.github.io/audio/casio/",
                 release: 2
             }).connect(this.reverb)
