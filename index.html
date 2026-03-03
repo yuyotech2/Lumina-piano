@@ -39,11 +39,22 @@
                     <input type="range" id="volume" min="-60" max="0" value="-10">
                 </div>
                 <div class="control-group">
-                    <label>Reverb</label>
-                    <input type="range" id="reverb" min="0" max="1" step="0.1" value="0.4">
+                    <label>Instrument</label>
+                    <select id="instrument-select">
+                        <option value="piano">Grand Piano</option>
+                        <option value="epiano">Electric Piano</option>
+                        <option value="synth">80s Lead Synth</option>
+                        <option value="organ">Church Organ</option>
+                    </select>
                 </div>
                 <div class="control-group">
                     <button id="sustain-btn" class="toggle-btn">Sustain (Space)</button>
+                </div>
+                <div class="control-group">
+                    <div class="recording-controls">
+                        <button id="record-btn" class="toggle-btn red-dot">Record</button>
+                        <button id="play-btn" class="toggle-btn" disabled>Play</button>
+                    </div>
                 </div>
                 <div class="control-group">
                     <button id="panic-btn" class="toggle-btn">Panic</button>

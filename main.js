@@ -11,68 +11,64 @@ class LuminaPiano {
         this.activeKeys = new Map(); // Keep track of active notes
         this.isSustainActive = false;
 
+        // Recording State
+        this.recordingNotes = [];
+        this.isRecording = false;
+        this.recordingStartTime = 0;
+        this.recordedData = null;
+
         this.initUI();
     }
 
     async initAudio() {
         const startBtn = document.getElementById('start-btn');
         const startText = startBtn.innerText;
-        startBtn.innerText = "Loading Samples...";
+        startBtn.innerText = "Loading Studio...";
         startBtn.disabled = true;
 
         await Tone.start();
 
-        return new Promise((resolve) => {
-            this.reverb = new Tone.Reverb({
-                decay: 3,
-                preDelay: 0.1,
-                wet: 0.3
-            }).toDestination();
+        this.reverb = new Tone.Reverb({
+            decay: 3,
+            preDelay: 0.1,
+            wet: 0.3
+        }).toDestination();
 
-            this.synth = new Tone.Sampler({
-                urls: {
-                    "A0": "A0.mp3",
-                    "C1": "C1.mp3",
-                    "D#1": "Ds1.mp3",
-                    "F#1": "Fs1.mp3",
-                    "A1": "A1.mp3",
-                    "C2": "C2.mp3",
-                    "D#2": "Ds2.mp3",
-                    "F#2": "Fs2.mp3",
-                    "A2": "A2.mp3",
-                    "C3": "C3.mp3",
-                    "D#3": "Ds3.mp3",
-                    "F#3": "Fs3.mp3",
-                    "A3": "A3.mp3",
-                    "C4": "C4.mp3",
-                    "D#4": "Ds4.mp3",
-                    "F#4": "Fs4.mp3",
-                    "A4": "A4.mp3",
-                    "C5": "C5.mp3",
-                    "D#5": "Ds5.mp3",
-                    "F#5": "Fs5.mp3",
-                    "A5": "A5.mp3",
-                    "C6": "C6.mp3",
-                    "D#6": "Ds6.mp3",
-                    "F#6": "Fs6.mp3",
-                    "A6": "A6.mp3",
-                    "C7": "C7.mp3",
-                    "D#7": "Ds7.mp3",
-                    "F#7": "Fs7.mp3",
-                    "A7": "A7.mp3",
-                    "C8": "C8.mp3"
-                },
-                release: 1,
+        // Load multi-instrument samplers
+        this.instruments = {
+            piano: new Tone.Sampler({
+                urls: { "A0": "A0.mp3", "C1": "C1.mp3", "D#1": "Ds1.mp3", "F#1": "Fs1.mp3", "A1": "A1.mp3", "C2": "C2.mp3", "D#2": "Ds2.mp3", "F#2": "Fs2.mp3", "A2": "A2.mp3", "C3": "C3.mp3", "D#3": "Ds3.mp3", "F#3": "Fs3.mp3", "A3": "A3.mp3", "C4": "C4.mp3", "D#4": "Ds4.mp3", "F#4": "Fs4.mp3", "A4": "A4.mp3", "C5": "C5.mp3", "D#5": "Ds5.mp3", "F#5": "Fs5.mp3", "A5": "A5.mp3", "C6": "C6.mp3", "D#6": "Ds6.mp3", "F#6": "Fs6.mp3", "A6": "A6.mp3", "C7": "C7.mp3", "D#7": "Ds7.mp3", "F#7": "Fs7.mp3", "A7": "A7.mp3", "C8": "C8.mp3" },
                 baseUrl: "https://tonejs.github.io/audio/salamander/",
-                onload: () => {
-                    console.log("Samples loaded!");
-                    startBtn.innerText = startText;
-                    startBtn.disabled = false;
-                    resolve();
-                }
-            }).connect(this.reverb);
+                release: 1
+            }).connect(this.reverb),
 
-            // Adjust volume
+            epiano: new Tone.Sampler({
+                urls: { "A1": "A1.mp3", "A2": "A2.mp3", "A3": "A3.mp3", "A4": "A4.mp3", "A5": "A5.mp3", "C1": "C1.mp3", "C2": "C2.mp3", "C3": "C3.mp3", "C4": "C4.mp3", "C5": "C5.mp3", "D#1": "Ds1.mp3", "D#2": "Ds2.mp3", "D#3": "Ds3.mp3", "D#4": "Ds4.mp3", "D#5": "Ds5.mp3", "F#1": "Fs1.mp3", "F#2": "Fs2.mp3", "F#3": "Fs3.mp3", "F#4": "Fs4.mp3", "F#5": "Fs5.mp3" },
+                baseUrl: "https://tonejs.github.io/audio/casio/",
+                release: 1
+            }).connect(this.reverb),
+
+            synth: new Tone.PolySynth(Tone.MonoSynth, {
+                oscillator: { type: "sawtooth" },
+                envelope: { attack: 0.1, release: 2 }
+            }).connect(this.reverb),
+
+            organ: new Tone.Sampler({
+                urls: { "C4": "C4.mp3" }, // Basic fallback, would need more samples for high quality
+                baseUrl: "https://tonejs.github.io/audio/casio/",
+                release: 2
+            }).connect(this.reverb)
+        };
+
+        this.synth = this.instruments.piano;
+
+        return new Promise((resolve) => {
+            Tone.loaded().then(() => {
+                console.log("Instruments loaded!");
+                startBtn.innerText = startText;
+                startBtn.disabled = false;
+                resolve();
+            });
             Tone.Destination.volume.value = -5;
         });
     }
@@ -151,6 +147,33 @@ class LuminaPiano {
 
         document.getElementById('reverb').addEventListener('input', (e) => {
             if (this.reverb) this.reverb.wet.value = parseFloat(e.target.value);
+        });
+
+        // Instrument Swapper
+        document.getElementById('instrument-select').addEventListener('change', (e) => {
+            this.switchInstrument(e.target.value);
+        });
+
+        // Recording Handlers
+        const recordBtn = document.getElementById('record-btn');
+        const playBtn = document.getElementById('play-btn');
+
+        recordBtn.addEventListener('click', () => {
+            if (!this.isRecording) {
+                this.startRecording();
+                recordBtn.innerText = 'Stop';
+                recordBtn.classList.add('recording');
+                playBtn.disabled = true;
+            } else {
+                this.stopRecording();
+                recordBtn.innerText = 'Record';
+                recordBtn.classList.remove('recording');
+                playBtn.disabled = false;
+            }
+        });
+
+        playBtn.addEventListener('click', () => {
+            this.playRecording();
         });
 
         // Sustain Button
@@ -256,6 +279,15 @@ class LuminaPiano {
             this.synth.triggerAttack(noteName, undefined, velocity);
         }
 
+        if (this.isRecording && trigger !== 'playback') {
+            this.recordingNotes.push({
+                time: Tone.now() - this.recordingStartTime,
+                note: midi,
+                velocity: velocity,
+                type: 'on'
+            });
+        }
+
         this.activeKeys.set(midi, { pressed: true, trigger });
         this.createNoteVisual(midi);
 
@@ -275,6 +307,14 @@ class LuminaPiano {
             keyData.pressed = false;
         }
 
+        if (this.isRecording) {
+            this.recordingNotes.push({
+                time: Tone.now() - this.recordingStartTime,
+                note: midi,
+                type: 'off'
+            });
+        }
+
         if (this.isSustainActive) return;
 
         const keyEl = document.querySelector(`.key[data-note="${midi}"]`);
@@ -285,6 +325,53 @@ class LuminaPiano {
         }
 
         this.activeKeys.delete(midi);
+    }
+
+    // --- New Features Logic ---
+
+    switchInstrument(name) {
+        if (this.instruments[name]) {
+            // Silence current
+            if (this.synth) this.synth.releaseAll();
+            this.synth = this.instruments[name];
+            console.log("Switched to:", name);
+        }
+    }
+
+    startRecording() {
+        this.recordingNotes = [];
+        this.isRecording = true;
+        this.recordingStartTime = Tone.now();
+        console.log("Recording started...");
+    }
+
+    stopRecording() {
+        this.isRecording = false;
+        this.recordedData = [...this.recordingNotes];
+        console.log("Recording stopped. Events captured:", this.recordedData.length);
+    }
+
+    playRecording() {
+        if (!this.recordedData || this.recordedData.length === 0) return;
+
+        const now = Tone.now();
+        this.recordedData.forEach(event => {
+            Tone.Transport.schedule((time) => {
+                if (event.type === 'on') {
+                    this.noteOn(event.note, event.velocity, 'playback');
+                } else {
+                    this.noteOff(event.note);
+                }
+            }, now + event.time);
+        });
+
+        Tone.Transport.start();
+        // Stop transport after last note + buffer
+        const lastTime = this.recordedData[this.recordedData.length - 1].time;
+        setTimeout(() => {
+            Tone.Transport.stop();
+            Tone.Transport.cancel();
+        }, (lastTime + 2) * 1000);
     }
 
     createNoteVisual(midi) {
