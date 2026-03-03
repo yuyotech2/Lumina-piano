@@ -276,9 +276,10 @@ class LuminaPiano {
         if (keyEl) keyEl.classList.add('active');
 
         if (this.synth) {
-            this.synth.triggerAttack(noteName, undefined, velocity);
+            this.synth.triggerAttack(noteName, Tone.now(), velocity);
         }
 
+        // Recording
         if (this.isRecording && trigger !== 'playback') {
             this.recordingNotes.push({
                 time: Tone.now() - this.recordingStartTime,
@@ -291,14 +292,9 @@ class LuminaPiano {
         this.activeKeys.set(midi, { pressed: true, trigger });
         this.createNoteVisual(midi);
 
-        // Dynamic background pulse
-        const hue = (midi * 137.5) % 360; // Golden angle for distributed colors
+        // Background pulse
+        const hue = (midi * 137.5) % 360;
         document.body.style.background = `radial-gradient(circle at center, hsla(${hue}, 70%, 20%, 0.3), #050508)`;
-        setTimeout(() => {
-            if (this.activeKeys.size === 0) {
-                document.body.style.background = '';
-            }
-        }, 500);
     }
 
     noteOff(midi) {
@@ -307,7 +303,8 @@ class LuminaPiano {
             keyData.pressed = false;
         }
 
-        if (this.isRecording) {
+        // Recording
+        if (this.isRecording && (!keyData || keyData.trigger !== 'playback')) {
             this.recordingNotes.push({
                 time: Tone.now() - this.recordingStartTime,
                 note: midi,
@@ -315,23 +312,22 @@ class LuminaPiano {
             });
         }
 
-        if (this.isSustainActive) return;
+        // Sustain Logic: Only release sound if sustain is OFF or if it's playback
+        if (!this.isSustainActive || (keyData && keyData.trigger === 'playback')) {
+            const keyEl = document.querySelector(`.key[data-note="${midi}"]`);
+            if (keyEl) keyEl.classList.remove('active');
 
-        const keyEl = document.querySelector(`.key[data-note="${midi}"]`);
-        if (keyEl) keyEl.classList.remove('active');
-
-        if (this.synth) {
-            this.synth.triggerRelease(this.midiToNoteName(midi));
+            if (this.synth) {
+                this.synth.triggerRelease(this.midiToNoteName(midi), Tone.now());
+            }
+            this.activeKeys.delete(midi);
         }
-
-        this.activeKeys.delete(midi);
     }
 
     // --- New Features Logic ---
 
     switchInstrument(name) {
         if (this.instruments[name]) {
-            // Silence current
             if (this.synth) this.synth.releaseAll();
             this.synth = this.instruments[name];
             console.log("Switched to:", name);
@@ -354,24 +350,23 @@ class LuminaPiano {
     playRecording() {
         if (!this.recordedData || this.recordedData.length === 0) return;
 
-        const now = Tone.now();
+        const startTime = Tone.now() + 0.1;
         this.recordedData.forEach(event => {
-            Tone.Transport.schedule((time) => {
+            Tone.Draw.schedule(() => {
                 if (event.type === 'on') {
                     this.noteOn(event.note, event.velocity, 'playback');
                 } else {
-                    this.noteOff(event.note);
+                    const keyData = this.activeKeys.get(event.note);
+                    if (keyData) {
+                        // Force release for playback notes
+                        const keyEl = document.querySelector(`.key[data-note="${event.note}"]`);
+                        if (keyEl) keyEl.classList.remove('active');
+                        if (this.synth) this.synth.triggerRelease(this.midiToNoteName(event.note), Tone.now());
+                        this.activeKeys.delete(event.note);
+                    }
                 }
-            }, now + event.time);
+            }, startTime + event.time);
         });
-
-        Tone.Transport.start();
-        // Stop transport after last note + buffer
-        const lastTime = this.recordedData[this.recordedData.length - 1].time;
-        setTimeout(() => {
-            Tone.Transport.stop();
-            Tone.Transport.cancel();
-        }, (lastTime + 2) * 1000);
     }
 
     createNoteVisual(midi) {
