@@ -81,8 +81,6 @@ class LuminaPiano {
     }
 
     generateKeys() {
-        // MIDI notes for a standard 88-key piano are 21 (A0) to 108 (C8)
-        // We'll generate a wide range (C1 to C8)
         const startNote = 24; // C1
         const endNote = 108;  // C8
 
@@ -90,12 +88,11 @@ class LuminaPiano {
         for (let i = startNote; i <= endNote; i++) {
             const isBlack = [1, 3, 6, 8, 10].includes(i % 12);
             const noteName = this.midiToNoteName(i);
-            const label = noteName.includes('#') ? '' : noteName; // Only label white keys
+            const label = noteName.includes('#') ? '' : noteName;
             html += `<div class="key ${isBlack ? 'black' : 'white'}" data-note="${i}" data-name="${noteName}">${label}</div>`;
         }
         this.container.innerHTML = html;
 
-        // Auto-center to Middle C (60)
         setTimeout(() => {
             const middleC = document.querySelector('.key[data-note="60"]');
             if (middleC) {
@@ -121,7 +118,6 @@ class LuminaPiano {
             this.isStarted = true;
         });
 
-        // Mouse Events
         this.container.addEventListener('mousedown', (e) => {
             if (!this.isStarted) return;
             const key = e.target.closest('.key');
@@ -132,7 +128,6 @@ class LuminaPiano {
         });
 
         window.addEventListener('mouseup', () => {
-            // Stop all mouse-triggered notes (simplified)
             this.activeKeys.forEach((val, midi) => {
                 if (val.trigger === 'mouse') {
                     this.noteOff(midi);
@@ -140,21 +135,14 @@ class LuminaPiano {
             });
         });
 
-        // Controls
         document.getElementById('volume').addEventListener('input', (e) => {
             Tone.Destination.volume.rampTo(parseFloat(e.target.value), 0.1);
         });
 
-        document.getElementById('reverb').addEventListener('input', (e) => {
-            if (this.reverb) this.reverb.wet.value = parseFloat(e.target.value);
-        });
-
-        // Instrument Swapper
         document.getElementById('instrument-select').addEventListener('change', (e) => {
             this.switchInstrument(e.target.value);
         });
 
-        // Recording Handlers
         const recordBtn = document.getElementById('record-btn');
         const playBtn = document.getElementById('play-btn');
 
@@ -176,13 +164,13 @@ class LuminaPiano {
             this.playRecording();
         });
 
-        // Sustain Button
         const sustainBtn = document.getElementById('sustain-btn');
         sustainBtn.addEventListener('click', () => this.toggleSustain());
 
-        // Panic Button
         document.getElementById('panic-btn').addEventListener('click', () => {
-            if (this.synth) this.synth.releaseAll();
+            if (this.synth) {
+                if (this.synth.releaseAll) this.synth.releaseAll();
+            }
             document.querySelectorAll('.key.active').forEach(k => k.classList.remove('active'));
             this.activeKeys.clear();
         });
@@ -207,7 +195,6 @@ class LuminaPiano {
             btn.classList.add('active');
         } else {
             btn.classList.remove('active');
-            // Release all notes that were held by sustain
             this.activeKeys.forEach((val, midi) => {
                 if (!val.pressed) {
                     this.noteOff(midi);
@@ -220,32 +207,21 @@ class LuminaPiano {
         if (navigator.requestMIDIAccess) {
             try {
                 this.midiAccess = await navigator.requestMIDIAccess();
-                this.updateMIDIDeviceStatus(true);
-
+                this.updateMIDIDeviceStatus();
                 for (let input of this.midiAccess.inputs.values()) {
                     input.onmidimessage = (msg) => this.onMIDIMessage(msg);
                 }
-
-                // Listen for device connections/disconnections
-                this.midiAccess.onstatechange = (e) => {
-                    this.updateMIDIDeviceStatus();
-                };
+                this.midiAccess.onstatechange = () => this.updateMIDIDeviceStatus();
             } catch (err) {
-                console.warn('MIDI access denied or not supported', err);
-                this.updateMIDIDeviceStatus(false);
+                this.updateMIDIDeviceStatus();
             }
         }
     }
 
-    updateMIDIDeviceStatus(initial) {
+    updateMIDIDeviceStatus() {
         const dot = document.querySelector('.status-dot');
         const text = document.getElementById('midi-text');
-
-        let connected = false;
-        if (this.midiAccess && this.midiAccess.inputs.size > 0) {
-            connected = true;
-        }
-
+        const connected = this.midiAccess && this.midiAccess.inputs.size > 0;
         if (connected) {
             dot.classList.add('connected');
             text.innerText = 'MIDI Connected';
@@ -257,14 +233,11 @@ class LuminaPiano {
 
     onMIDIMessage(message) {
         if (!this.isStarted) return;
-
         const [status, note, velocity] = message.data;
-        const type = status & 0xf0; // Channel message type
-        const channel = status & 0x0f; // MIDI channel
-
-        if (type === 144 && velocity > 0) { // Note On
+        const type = status & 0xf0;
+        if (type === 144 && velocity > 0) {
             this.noteOn(note, velocity / 127, 'midi');
-        } else if (type === 128 || (type === 144 && velocity === 0)) { // Note Off
+        } else if (type === 128 || (type === 144 && velocity === 0)) {
             this.noteOff(note);
         }
     }
@@ -272,14 +245,12 @@ class LuminaPiano {
     noteOn(midi, velocity, trigger = 'mouse') {
         const noteName = this.midiToNoteName(midi);
         const keyEl = document.querySelector(`.key[data-note="${midi}"]`);
-
         if (keyEl) keyEl.classList.add('active');
 
         if (this.synth) {
             this.synth.triggerAttack(noteName, Tone.now(), velocity);
         }
 
-        // Recording
         if (this.isRecording && trigger !== 'playback') {
             this.recordingNotes.push({
                 time: Tone.now() - this.recordingStartTime,
@@ -292,18 +263,14 @@ class LuminaPiano {
         this.activeKeys.set(midi, { pressed: true, trigger });
         this.createNoteVisual(midi);
 
-        // Background pulse
         const hue = (midi * 137.5) % 360;
         document.body.style.background = `radial-gradient(circle at center, hsla(${hue}, 70%, 20%, 0.3), #050508)`;
     }
 
     noteOff(midi) {
         const keyData = this.activeKeys.get(midi);
-        if (keyData) {
-            keyData.pressed = false;
-        }
+        if (keyData) keyData.pressed = false;
 
-        // Recording
         if (this.isRecording && (!keyData || keyData.trigger !== 'playback')) {
             this.recordingNotes.push({
                 time: Tone.now() - this.recordingStartTime,
@@ -312,11 +279,9 @@ class LuminaPiano {
             });
         }
 
-        // Sustain Logic: Only release sound if sustain is OFF or if it's playback
         if (!this.isSustainActive || (keyData && keyData.trigger === 'playback')) {
             const keyEl = document.querySelector(`.key[data-note="${midi}"]`);
             if (keyEl) keyEl.classList.remove('active');
-
             if (this.synth) {
                 this.synth.triggerRelease(this.midiToNoteName(midi), Tone.now());
             }
@@ -324,13 +289,10 @@ class LuminaPiano {
         }
     }
 
-    // --- New Features Logic ---
-
     switchInstrument(name) {
         if (this.instruments[name]) {
-            if (this.synth) this.synth.releaseAll();
+            if (this.synth && this.synth.releaseAll) this.synth.releaseAll();
             this.synth = this.instruments[name];
-            console.log("Switched to:", name);
         }
     }
 
@@ -338,18 +300,15 @@ class LuminaPiano {
         this.recordingNotes = [];
         this.isRecording = true;
         this.recordingStartTime = Tone.now();
-        console.log("Recording started...");
     }
 
     stopRecording() {
         this.isRecording = false;
         this.recordedData = [...this.recordingNotes];
-        console.log("Recording stopped. Events captured:", this.recordedData.length);
     }
 
     playRecording() {
         if (!this.recordedData || this.recordedData.length === 0) return;
-
         const startTime = Tone.now() + 0.1;
         this.recordedData.forEach(event => {
             Tone.Draw.schedule(() => {
@@ -358,7 +317,6 @@ class LuminaPiano {
                 } else {
                     const keyData = this.activeKeys.get(event.note);
                     if (keyData) {
-                        // Force release for playback notes
                         const keyEl = document.querySelector(`.key[data-note="${event.note}"]`);
                         if (keyEl) keyEl.classList.remove('active');
                         if (this.synth) this.synth.triggerRelease(this.midiToNoteName(event.note), Tone.now());
@@ -370,12 +328,9 @@ class LuminaPiano {
     }
 
     createNoteVisual(midi) {
-        // Simple visual feedback in the background
         const visualizer = document.getElementById('visualizer');
         const burst = document.createElement('div');
         burst.className = 'note-burst';
-
-        // Find key position
         const keyEl = document.querySelector(`.key[data-note="${midi}"]`);
         if (keyEl) {
             const rect = keyEl.getBoundingClientRect();
@@ -383,38 +338,16 @@ class LuminaPiano {
             burst.style.bottom = '250px';
             burst.style.backgroundColor = midi % 12 === 0 ? 'var(--accent-primary)' : 'var(--accent-secondary)';
         }
-
         visualizer.appendChild(burst);
         setTimeout(() => burst.remove(), 1000);
     }
 }
 
-// Visual styles for note burst (added via JS or CSS)
 const style = document.createElement('style');
 style.textContent = `
-    .visualizer-container {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        pointer-events: none;
-        z-index: 0;
-    }
-    .note-burst {
-        position: absolute;
-        width: 10px;
-        height: 10px;
-        border-radius: 50%;
-        filter: blur(5px);
-        opacity: 0.8;
-        transform: translate(-50%, 0);
-        animation: burstUp 1s ease-out forwards;
-    }
-    @keyframes burstUp {
-        0% { transform: translate(-50%, 0) scale(1); opacity: 1; }
-        100% { transform: translate(-50%, -300px) scale(4); opacity: 0; }
-    }
+    .visualizer-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
+    .note-burst { position: absolute; width: 10px; height: 10px; border-radius: 50%; filter: blur(5px); opacity: 0.8; transform: translate(-50%, 0); animation: burstUp 1s ease-out forwards; }
+    @keyframes burstUp { 0% { transform: translate(-50%, 0) scale(1); opacity: 1; } 100% { transform: translate(-50%, -300px) scale(4); opacity: 0; } }
 `;
 document.head.appendChild(style);
 
